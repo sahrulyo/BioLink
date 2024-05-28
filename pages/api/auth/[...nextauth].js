@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import GithubProvider from "next-auth/providers/github";
 import { ObjectId } from "bson";
-
+import GoogleProvider from "next-auth/providers/google";
 import { serverEnv } from "@config/schemas/serverSchema";
 import stripe from "@config/stripe";
 import DbAdapter from "./db-adapter";
@@ -26,6 +26,19 @@ export const authOptions = {
           username: profile.login,
           email: profile.email,
           image: profile.avatar_url,
+        };
+      },
+    }),
+    GoogleProvider({ // google 
+      clientId: serverEnv.GOOGLE_ID,
+      clientSecret: serverEnv.GOOGLE_SECRET,
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          username: profile.email.split('@')[0],
+          email: profile.email,
+          image: profile.picture,
         };
       },
     }),

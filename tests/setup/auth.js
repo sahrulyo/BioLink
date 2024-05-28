@@ -1,6 +1,5 @@
 import { encode } from "next-auth/jwt";
 import { ObjectId } from "bson";
-
 import connectMongo from "@config/mongo";
 import { serverEnv } from "@config/schemas/serverSchema";
 import { User, Session, Account } from "@models/index";
