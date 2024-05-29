@@ -1,12 +1,13 @@
 import { getServerSession } from "next-auth/next";
 import { signIn } from "next-auth/react";
+import { BsGithub, BsGoogle } from "react-icons/bs";
 
 import BlankLayout from "@components/layouts/BlankLayout";
 import { authOptions } from "pages/api/auth/[...nextauth]";
-import { BsGithub } from "react-icons/bs";
 import Button from "@components/Button";
 import Link from "@components/Link";
 import Logo from "@public/logos/Logo";
+
 
 export async function getServerSideProps(context) {
   const session = await getServerSession(context.req, context.res, authOptions);
@@ -38,6 +39,24 @@ export default function SignIn() {
           </span>
           Continue with GitHub
         </Button>
+
+        <Button primary={true} key="google" onClick={() => signIn("google")}>
+          <span className="mr-2">
+            <BsGoogle className="text-2xl" />
+          </span>
+          Continue with Google
+        </Button>
+        
+        {/* <Button primary={true} key="google2" onClick={() => {
+  console.log("Google sign-in clicked");
+  signIn("google");
+}}>
+  <span className="mr-2">
+    <BsGoogle className="text-2xl" />
+  </span>
+  Continue with Google
+</Button> */}
+
 
         <p className="mt-10 text-center text-sm text-primary-low-medium">
           Don&lsquo;t have a GitHub account? Create one on{" "}

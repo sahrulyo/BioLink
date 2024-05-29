@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import GithubProvider from "next-auth/providers/github";
-import { ObjectId } from "bson";
 import GoogleProvider from "next-auth/providers/google";
+import { ObjectId } from "bson";
 import { serverEnv } from "@config/schemas/serverSchema";
 import stripe from "@config/stripe";
 import DbAdapter from "./db-adapter";
@@ -29,59 +29,76 @@ export const authOptions = {
         };
       },
     }),
-    GoogleProvider({ // google 
+    GoogleProvider({
       clientId: serverEnv.GOOGLE_ID,
       clientSecret: serverEnv.GOOGLE_SECRET,
-      profile(profile) {
-        return {
-          id: profile.sub,
-          name: profile.name,
-          username: profile.email.split('@')[0],
-          email: profile.email,
-          image: profile.picture,
-        };
-      },
+      // authorizationUrl: `https://accounts.google.com/o/oauth2/auth?response_type=code&prompt=consent&access_type=offline&redirect_uri=${serverEnv.GOOGLE_REDIRECT_URL}`,
+      // profile(profile) {
+      //   return {
+      //     id: profile.sub,
+      //     name: profile.name,
+      //     username: profile.email.split('@')[0],
+      //     email: profile.email,
+      //     image: profile.picture,
+      //   };
+      // },
     }),
   ],
   session: {
     strategy: "jwt",
   },
   callbacks: {
-    async signIn({ user, profile: githubProfile }) {
+    async signIn({ user, account, profile }) {
       await connectMongo();
-      await Account.findOneAndUpdate(
-        { userId: user._id },
-        {
-          github: {
-            company: githubProfile.company,
-            publicRepos: githubProfile.public_repos,
-            followers: githubProfile.followers,
-            following: githubProfile.following,
+
+      if (account.provider === 'github') {
+        await Account.findOneAndUpdate(
+          { userId: user.id },
+          {
+            github: {
+              company: profile.company,
+              publicRepos: profile.public_repos,
+              followers: profile.followers,
+              following: profile.following,
+            },
           },
-        },
-        { upsert: true },
-      );
+          { upsert: true },
+        );
+      }
+
+      if (account.provider === 'google') {
+        await Account.findOneAndUpdate(
+          { userId: user.id },
+          {
+            google: {
+              email: profile.email,
+              name: profile.name,
+              picture: profile.picture,
+            },
+          },
+          { upsert: true },
+        );
+      }
+
       return true;
     },
     async redirect({ baseUrl }) {
       return `${baseUrl}/account/onboarding`;
     },
     async jwt({ token, account, profile }) {
-      // Persist the OAuth access_token and or the user id to the token right after signin
       if (account) {
         token.accessToken = account.access_token;
         token.id = profile.id;
-        token.username = profile.login;
+        token.username = profile.login || profile.email.split('@')[0];
       }
       return token;
     },
     async session({ session, token }) {
       await connectMongo();
-      // Send properties to the client, like an access_token and user id from a provider.
-      // note: `sub` is the user id
       session.accessToken = token.accessToken;
       session.user.id = token.sub;
       session.username = token.username;
+
       const user = await User.findOne({ _id: token.sub });
       if (user) {
         session.accountType = user.type;
@@ -98,88 +115,69 @@ export const authOptions = {
     signIn: "/auth/signin",
   },
   events: {
-    async signIn({ profile: githubProfile }) {
+    async signIn({ profile, account }) {
       await connectMongo();
-      const username = githubProfile.username;
+      const username = profile.login || profile.email.split('@')[0];
       const defaultLink = (profileId) => ({
         username,
-        name: "GitHub",
-        url: `https://github.com/${username}`,
-        icon: "FaGithub",
+        name: account.provider === 'github' ? "GitHub" : "Google",
+        url: account.provider === 'github' ? `https://github.com/${username}` : `https://plus.google.com/${profile.sub}`,
+        icon: account.provider === 'github' ? "FaGithub" : "FaGoogle",
         isEnabled: true,
         isPinned: true,
         animation: "glow",
         profile: new ObjectId(profileId),
       });
 
-      // associate BioDrop profile to account
-      const account = await getAccountByProviderAccountId(githubProfile.id);
-      const user = await User.findOne({ _id: account.userId });
+      const userAccount = await getAccountByProviderAccountId(profile.id);
+      const user = await User.findOne({ _id: userAccount.userId });
 
-      // create basic profile if it doesn't exist
-      let profile = await Profile.findOne({ username });
-      if (!profile) {
+      let userProfile = await Profile.findOne({ username });
+      if (!userProfile) {
         logger.info("profile not found for: ", username);
-        profile = await Profile.findOneAndUpdate(
-          {
-            username,
-          },
-          {
-            source: "database",
-            name: githubProfile.name,
-            bio: "Have a look at my BioDrop Profile!",
-            user: account.userId,
-          },
-          {
-            new: true,
-            upsert: true,
-          },
-        );
-        const link = await Link.create([defaultLink(profile._id)], {
-          new: true,
-        });
-        profile = await Profile.findOneAndUpdate(
+        userProfile = await Profile.findOneAndUpdate(
           { username },
           {
-            $push: { links: new ObjectId(link[0]._id) },
+            source: "database",
+            name: profile.name,
+            bio: "Have a look at my BioDrop Profile!",
+            user: userAccount.userId,
           },
+          { new: true, upsert: true },
+        );
+        const link = await Link.create([defaultLink(userProfile._id)], { new: true });
+        userProfile = await Profile.findOneAndUpdate(
+          { username },
+          { $push: { links: new ObjectId(link[0]._id) } },
           { new: true },
         );
       }
 
-      // associate User to Profile
-      await associateProfileWithAccount(account, profile._id);
+      await associateProfileWithAccount(userAccount, userProfile._id);
 
-      // Create a stripe customer for the user with their email address
       if (!user.stripeCustomerId) {
         logger.info("user stripe customer id not found for: ", user.email);
-
         const customer = await stripe.customers.create({
           email: user.email,
           name: user.name,
           metadata: {
-            userId: account.userId,
-            github: username,
+            userId: userAccount.userId,
+            provider: account.provider,
+            username,
           },
         });
-
         await User.findOneAndUpdate(
-          { _id: new ObjectId(account.userId) },
+          { _id: new ObjectId(userAccount.userId) },
           { stripeCustomerId: customer.id, type: "free" },
         );
       }
 
-      // add github link to profile if no links exist
-      if (profile.links.length === 0) {
+      if (userProfile.links.length === 0) {
         logger.info("no links found for: ", username);
-        const link = await Link.create([defaultLink(profile._id)], {
-          new: true,
-        });
+        const link = await Link.create([defaultLink(userProfile._id)], { new: true });
         await Profile.findOneAndUpdate(
           { username },
-          {
-            $push: { links: new ObjectId(link[0]._id) },
-          },
+          { $push: { links: new ObjectId(link[0]._id) } },
         );
       }
     },
