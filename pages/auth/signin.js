@@ -29,7 +29,7 @@ export default function SignIn() {
           <Logo className="w-1/2" />
         </Link>
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-primary-medium flex flex-col">
-          <span>Connect to YOUR audience</span>
+          <span>Connect to YOUR network</span>
           <span className="text-tertiary-medium">with a single link</span>
         </h2>
 
@@ -58,12 +58,12 @@ export default function SignIn() {
 </Button> */}
 
 
-        <p className="mt-10 text-center text-sm text-primary-low-medium">
+       {/* <p className="mt-10 text-center text-sm text-primary-low-medium">
           Don&lsquo;t have a GitHub account? Create one on{" "}
           <Link href="https://github.com/signup" target="_blank">
             GitHub
           </Link>
-        </p>
+</p> */}
       </div>
     </div>
   );

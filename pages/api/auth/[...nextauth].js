@@ -140,7 +140,7 @@ export const authOptions = {
           {
             source: "database",
             name: profile.name,
-            bio: "Have a look at my BioDrop Profile!",
+            bio: "Have a look at my One Link Profile!",
             user: userAccount.userId,
           },
           { new: true, upsert: true },
